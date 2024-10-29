@@ -49,12 +49,12 @@ loader.load('public/ur5_e/ur5_e_v1.glb', function (gltf) {
     // Set the base pose
     const zAxis = new THREE.Vector3(0, 0, 1);
     const yAxis = new THREE.Vector3(0, 1, 0);
-    shoulder.rotateOnAxis(yAxis, degToRad(0));
-    upperarm.rotateOnAxis(zAxis, degToRad(30));
-    forearm.rotateOnAxis(zAxis, degToRad(105));
-    wrist1.rotateOnAxis(zAxis, degToRad(-120)); // -120< up, -120> down
-    wrist2.rotateOnAxis(yAxis, degToRad(90)); // >90 right, <90 left
-    wrist3.rotateOnAxis(zAxis, degToRad(0));
+    // shoulder.rotateOnAxis(yAxis, degToRad(0));
+    // upperarm.rotateOnAxis(zAxis, degToRad(30));
+    // forearm.rotateOnAxis(zAxis, degToRad(105));
+    // wrist1.rotateOnAxis(zAxis, degToRad(-120)); // -120< up, -120> down
+    // wrist2.rotateOnAxis(yAxis, degToRad(90)); // >90 right, <90 left
+    // wrist3.rotateOnAxis(zAxis, degToRad(0));
 
 }, undefined, function (error) {
     console.error("Error loading model:", error);
@@ -102,6 +102,52 @@ function breatheSin(i) {
     forearm.rotateZ(-angle/20);
 }
 
+function forward_kinematics_head(joint_angles){
+    q0 = joint_angles[0];
+    q1 = joint_angles[1];
+    q2 = joint_angles[2];
+    
+    cq0 = Math.cos(q0);
+    cq1 = Math.cos(q1);
+    cq2 = Math.cos(q2);
+
+    sq0 = Math.sin(q0);
+    sq1 = Math.sin(q1);
+    sq2 = Math.sin(q2);
+
+    T_2_b = [
+        [ // First row
+            cq0 * cq1 * cq2 - cq0 * sq1 * sq2,
+            - cq0 * cq1 * sq2 - cq0 * sq1 * sq2,
+            sq0,
+            -425 * cq0 * sq1 - 133 * sq0
+        ],
+        [ // Second row
+            sq1 * cq2 + cq1 * sq2,
+            -sq1 * sq2 + cq1 * cq2,
+            0,
+            425 * cq1 + 162.5  
+        ],
+        [ // Third row
+            -sq0 * cq1 * cq2 + sq0 * sq1 * sq2,
+            sq0 * sq1 * sq2 + sq0 * sq1 * cq2,
+            cq0,
+            425 * sq0 * sq1 - 133 * cq0,
+            0
+        ],
+        [ // Fourth row
+            0,
+            0,
+            0,
+            1
+        ]
+    ]
+}
+
+// TODO : Add matrix multiplication
+
+// TODO : Add object creation for joints to check it works 
+
 // Animation loop
 function animate() {
     setTimeout( function() {
@@ -110,7 +156,7 @@ function animate() {
 
     }, 1000 / breathe_params["cr"]);
     
-    breatheSin(breathe_counter);
+    // breatheSin(breathe_counter);
     breathe_counter += 1;
     breathe_counter = breathe_counter % (breathe_params["cr"] / breathe_params["bps"]);
 
