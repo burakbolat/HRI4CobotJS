@@ -87,6 +87,21 @@ scene.add(axesHelper);
 
 // ROBOT RELATED OPERATIONS
 const EPS = 1e-6;
+
+fetch('breathin_data.json')
+    .then(response => {
+    if (!response.ok) {
+      throw new Error('Network response was not ok');
+    }
+        return response.json(); // Parse the JSON data from the response
+    })
+    .then(data => {
+        console.log(data); // Use the loaded JSON data here
+    })
+    .catch(error => {
+        console.error('There was a problem with the fetch operation:', error);
+    });
+
 const breathe_params = {
     cr: 60,  // control rate in real robot
     amp: 1, // amplitude
@@ -300,20 +315,11 @@ function inv(matrix){
     return identity;
 }
 
-// forward_kinematics_head([degToRad(0), degToRad(30), degToRad(105)]);
-
-// Check if jacobian works
-let pos1 = forward_kinematics_head(robot_joint_state);
-
 let joint_vels = [[degToRad(10)], [degToRad(-30)], [degToRad(30)]];
-
 const dt = 1 / breathe_params["cr"];
 
-let delta_x = matmul(jacobian_kinematics_head(robot_joint_state), joint_vels);
 let jacobian = jacobian_kinematics_head(robot_joint_state);
 
-let a = [[3, 4], [1,2]];
-console.log(inv(a));
 
 // Animation loop
 function animate() {
