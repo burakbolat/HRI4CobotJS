@@ -29,6 +29,8 @@ scene.add(backdrop);
 
 // Load the UR5e
 let shoulder, upperarm, forearm, wrist1, wrist2, wrist3;
+let robot_joint_state = [0, 30, 105, 0, 0, 0].map(angle => degToRad(angle));
+
 const loader = new GLTFLoader();
 loader.load('public/ur5_e/ur5_e_v1.glb', function (gltf) {
     gltf.scene.scale.set(1, 1, 1); // Adjust scale as needed
@@ -49,12 +51,12 @@ loader.load('public/ur5_e/ur5_e_v1.glb', function (gltf) {
     // Set the base pose
     const zAxis = new THREE.Vector3(0, 0, 1);
     const yAxis = new THREE.Vector3(0, 1, 0);
-    // shoulder.rotateOnAxis(yAxis, degToRad(0));
-    // upperarm.rotateOnAxis(zAxis, degToRad(30));
-    // forearm.rotateOnAxis(zAxis, degToRad(105));
-    // wrist1.rotateOnAxis(zAxis, degToRad(-120)); // -120< up, -120> down
-    // wrist2.rotateOnAxis(yAxis, degToRad(90)); // >90 right, <90 left
-    // wrist3.rotateOnAxis(zAxis, degToRad(0));
+    shoulder.rotateOnAxis(yAxis, robot_joint_state[0]);
+    upperarm.rotateOnAxis(zAxis, robot_joint_state[1]);
+    forearm.rotateOnAxis(zAxis, robot_joint_state[2]);
+    // wrist1.rotateOnAxis(zAxis, robot_joint_state[3]); // -120< up, -120> down
+    // wrist2.rotateOnAxis(yAxis, robot_joint_state[4]); // >90 right, <90 left
+    // wrist3.rotateOnAxis(zAxis, robot_joint_state[5]);
 
 }, undefined, function (error) {
     console.error("Error loading model:", error);
@@ -84,7 +86,7 @@ scene.add(axesHelper);
 
 
 // ROBOT RELATED OPERATIONS
-
+const EPS = 1e-6;
 const breathe_params = {
     cr: 60,  // control rate in real robot
     amp: 1, // amplitude
@@ -102,37 +104,94 @@ function breatheSin(i) {
     forearm.rotateZ(-angle/20);
 }
 
-function forward_kinematics_head(joint_angles){
-    q0 = joint_angles[0];
-    q1 = joint_angles[1];
-    q2 = joint_angles[2];
+function jacobian_kinematics_head(joint_angles){
+    let q0 = joint_angles[0];
+    let q1 = joint_angles[1];
+    let q2 = joint_angles[2];
     
-    cq0 = Math.cos(q0);
-    cq1 = Math.cos(q1);
-    cq2 = Math.cos(q2);
+    let cq0 = Math.cos(q0);
+    let cq1 = Math.cos(q1);
+    let cq2 = Math.cos(q2);
 
-    sq0 = Math.sin(q0);
-    sq1 = Math.sin(q1);
-    sq2 = Math.sin(q2);
+    let sq0 = Math.sin(q0);
+    let sq1 = Math.sin(q1);
+    let sq2 = Math.sin(q2);
 
-    T_2_b = [
+    let der_x_q0 = 392.2 * sq0 * cq1 * sq2 
+        + 392.2 * sq0 * sq1 * cq2 
+        + 425 * sq0 * sq1;
+    
+    let der_x_q1 = 392.2 * cq0 * sq1 * sq2
+        - 392.2 * cq0 * cq1 * cq2
+        - 425 * cq0 * cq1;
+        
+    let der_x_q2 = -392.2 * cq0 * cq1 * cq2
+        + 392.2 * cq0 * sq1 * sq2;
+
+    let der_y_q0 = 0;
+
+    let der_y_q1 = -392.2 * cq1 * sq2
+        - 392.2 * sq1 * cq2
+        - 425 * sq1;
+
+    let der_y_q2 = -392.2 * sq1 * cq2 
+        - 392.2 * cq1 * sq2;
+
+    let der_z_q0 = 392.2 * cq0 * sq1 * sq2
+        + 392.2 * cq0 * sq1 * cq2
+        + 23.85 * sq0
+        + 425 * cq0 * sq1;
+
+    let der_z_q1 = 392.2 * sq0 * sq1 * sq2
+        + 392.2 * sq0 * sq1 * cq2
+        + 425 * sq0 * cq1;
+
+    let der_z_q2 = 392.2 * sq0 * sq1 * cq2
+        - 392.2 * sq0 * sq1 * sq2;
+
+    let jacobian = [[der_x_q0, der_x_q1, der_x_q2],
+                    [der_y_q0, der_y_q1, der_y_q2],
+                    [der_z_q0, der_z_q1, der_z_q2]];
+    return jacobian;
+}
+
+function forward_kinematics_head(joint_angles){
+    let q0 = joint_angles[0];
+    let q1 = joint_angles[1];
+    let q2 = joint_angles[2];
+    
+    let cq0 = Math.cos(q0);
+    let cq1 = Math.cos(q1);
+    let cq2 = Math.cos(q2);
+
+    let sq0 = Math.sin(q0);
+    let sq1 = Math.sin(q1);
+    let sq2 = Math.sin(q2);
+
+    // ur5e vs u5
+    // 133 vs 109
+    // 162.5 vs 89.1
+    // 425 vs 425
+    // 392.2 vs 392.2
+
+    let T_2_b = [
         [ // First row
             cq0 * cq1 * cq2 - cq0 * sq1 * sq2,
-            - cq0 * cq1 * sq2 - cq0 * sq1 * sq2,
+            - cq0 * cq1 * sq2 - cq0 * sq1 * cq2,
             sq0,
-            -425 * cq0 * sq1 - 133 * sq0
+            -425 * cq0 * sq1 - 109.15 * sq0
         ],
         [ // Second row
             sq1 * cq2 + cq1 * sq2,
             -sq1 * sq2 + cq1 * cq2,
             0,
-            425 * cq1 + 162.5  
+            425 * cq1 + 89.159  
         ],
         [ // Third row
             -sq0 * cq1 * cq2 + sq0 * sq1 * sq2,
             sq0 * sq1 * sq2 + sq0 * sq1 * cq2,
             cq0,
-            425 * sq0 * sq1 - 133 * cq0,
+            425 * sq0 * sq1 - 109.15 * cq0,
             0
         ],
         [ // Fourth row
@@ -141,12 +200,120 @@ function forward_kinematics_head(joint_angles){
             0,
             1
         ]
-    ]
+    ];
+
+    // end of last link wrt joint affecting it in the joint's frame
+    let head_forearm =[[0], [392.2], [109.15], [1]];
+    let head_base = matmul(T_2_b, head_forearm);
+    
+    const geometry = new THREE.SphereGeometry(0.05, 32, 32);
+    const material = new THREE.MeshBasicMaterial({ color: 0x0077ff, wireframe: false });
+    let sphere = new THREE.Mesh(geometry, material);
+    sphere.position.set(head_base[0][0]/1000, head_base[1][0]/1000, head_base[2][0]/1000);
+    scene.add(sphere);
+
+    return head_base;
 }
 
-// TODO : Add matrix multiplication
+function matmul(lhs, rhs){
+    if (lhs[0].length != rhs.length)
+    {
+        console.log("dimension mismatch: ", lhs[0].length, rhs.length);
+        return;
+    }
 
-// TODO : Add object creation for joints to check it works 
+    let [m, n, r] = [lhs.length, lhs[0].length, rhs[0].length]; // mxn and nxr
+    
+    let result = new Array();
+    for (let i = 0; i < m; i++)
+    {
+        let row_result = new Array(r);
+        row_result.fill(0);
+        for (let j = 0; j < n; j++)
+        {
+            let row_comb_mult = lhs[i][j];
+            for (let k = 0; k < r; k++)
+            {
+                row_result[k] += rhs[j][k] * row_comb_mult;
+            }
+        }
+        result.push(row_result);
+    }
+
+    return result;
+}
+
+function inv(matrix){
+    // TODO : Check if the matrix is invertible
+    // TODO : Implement pseudo inverse for rectangle matrices
+
+    // identity to operate row reductions simultaneously
+    let identity = Array(matrix.length);
+    for (let i = 0; i < identity.length; i++)
+    {
+        let row = Array(matrix[0].length).fill(0);
+        row[i] = 1;
+        identity[i] = row;
+    }
+    
+    for (let pivot = 0; pivot < matrix.length; pivot++){
+        let pivot_divider = matrix[pivot][pivot];
+        if (pivot_divider < EPS)
+        {
+            // Permutate the rows
+            for (let k = pivot+1; k < matrix.length; k++)
+            {
+                if (matrix[k][0] > EPS || matrix[k][0] < -EPS)
+                {
+                    const temp_row = matrix[k];
+                    matrix[k] = matrix[pivot];
+                    matrix[pivot] = temp_row;
+                    pivot_divider = matrix[pivot][pivot];
+                }
+            }
+        }
+
+        // Make the pivot 1.
+        matrix[pivot] = matrix[pivot].map(elem => elem / pivot_divider);
+        identity[pivot] = identity[pivot].map(elem => elem/pivot_divider);
+
+        // Make echelon form
+        for (let k = pivot+1; k < matrix.length; k++)
+        {
+            let row_multiplier = matrix[k][pivot];
+            matrix[k] = matrix[k].map((elem, colIndex) => elem - row_multiplier * matrix[pivot][colIndex]);
+            identity[k] = identity[k].map((elem, colIndex) => elem - row_multiplier * identity[pivot][colIndex]);        
+        }
+    }
+
+    // Substract in the reverse order to get Identity
+    for (let pivot = matrix.length - 1; pivot > 0; pivot--)
+    {
+        for (let k = pivot - 1; k >= 0; k--)
+        {
+            let column_multiplier = matrix[k][pivot];
+            matrix[k][pivot] = 0;
+            identity[k] = identity[k].map((elem, colIndex) => elem - column_multiplier * identity[pivot][colIndex]);
+        }
+    }
+
+    return identity;
+}
+
+// forward_kinematics_head([degToRad(0), degToRad(30), degToRad(105)]);
+
+// Check if jacobian works
+let pos1 = forward_kinematics_head(robot_joint_state);
+
+let joint_vels = [[degToRad(10)], [degToRad(-30)], [degToRad(30)]];
+
+const dt = 1 / breathe_params["cr"];
+
+let delta_x = matmul(jacobian_kinematics_head(robot_joint_state), joint_vels);
+let jacobian = jacobian_kinematics_head(robot_joint_state);
+
+let a = [[3, 4], [1,2]];
+console.log(inv(a));
 
 // Animation loop
 function animate() {
