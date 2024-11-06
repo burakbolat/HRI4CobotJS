@@ -29,7 +29,7 @@ scene.add(backdrop);
 
 // Load the UR5e
 let shoulder, upperarm, forearm, wrist1, wrist2, wrist3;
-let robot_joint_state = [0, 30, 105, 0, 0, 0].map(angle => degToRad(angle));
+let robot_joint_state = [0, 30, 105, -130, 90, 0].map(angle => degToRad(angle));
 
 const loader = new GLTFLoader();
 loader.load('public/ur5_e/ur5_e_v1.glb', function (gltf) {
@@ -46,21 +46,31 @@ loader.load('public/ur5_e/ur5_e_v1.glb', function (gltf) {
         else if (child.name.includes("wrist1")) wrist1 = child;
         else if (child.name.includes("wrist2")) wrist2 = child;
         else if (child.name.includes("wrist3")) wrist3 = child;
+
+        if (child.isMesh){
+            child.material.metalness = 0.5;
+            child.material.roughness = 0.5;
+        }
     })
 
     // Set the base pose
     const zAxis = new THREE.Vector3(0, 0, 1);
     const yAxis = new THREE.Vector3(0, 1, 0);
-    shoulder.rotateOnAxis(yAxis, robot_joint_state[0]);
-    upperarm.rotateOnAxis(zAxis, robot_joint_state[1]);
-    forearm.rotateOnAxis(zAxis, robot_joint_state[2]);
-    // wrist1.rotateOnAxis(zAxis, robot_joint_state[3]); // -120< up, -120> down
-    // wrist2.rotateOnAxis(yAxis, robot_joint_state[4]); // >90 right, <90 left
-    // wrist3.rotateOnAxis(zAxis, robot_joint_state[5]);
+    set_joint_state(robot_joint_state);
 
 }, undefined, function (error) {
     console.error("Error loading model:", error);
 });
+
+function set_joint_state(joint_state)
+{
+    shoulder.rotation.y = robot_joint_state[0];
+    upperarm.rotation.z = robot_joint_state[1];
+    forearm.rotation.z = robot_joint_state[2];
+    wrist1.rotation.z = robot_joint_state[3];
+    wrist2.rotation.y = robot_joint_state[4];
+    wrist3.rotation.z = robot_joint_state[5];
+}
 
 // Add lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Soft light
@@ -87,8 +97,8 @@ scene.add(axesHelper);
 
 // ROBOT RELATED OPERATIONS
 const EPS = 1e-6;
-
-fetch('breathin_data.json')
+let breathing_data;
+fetch('breathing_data.json')
     .then(response => {
     if (!response.ok) {
       throw new Error('Network response was not ok');
@@ -96,7 +106,7 @@ fetch('breathin_data.json')
         return response.json(); // Parse the JSON data from the response
     })
     .then(data => {
-        console.log(data); // Use the loaded JSON data here
+        breathing_data = data;
     })
     .catch(error => {
         console.error('There was a problem with the fetch operation:', error);
@@ -104,10 +114,21 @@ fetch('breathin_data.json')
 
 const breathe_params = {
     cr: 60,  // control rate in real robot
-    amp: 1, // amplitude
+    amp: 500, // amplitude
     bps: 0.25, // breathe per second
-    velocity_profile: Math.sin // velocity profile
+    velocity_profile: base_vel_at_t, // velocity profile
+    direction: [1, 1, 0]
 }
+
+function normalize(vector)
+{
+    let magnitude = vetor.reduce((accumulator, currentValue) => accumulator + currentValue * currentValue, 0);
+    magnitude = Math.sqrt(magnitude);
+    if (magnitude == 0) return;
+    vector = vector.map(elem => elem / magnitude);
+}
+
+breathe_params["direction"] = breathe_params["direction"]
 
 var breathe_counter = 0;
 
@@ -315,11 +336,57 @@ function inv(matrix){
     return identity;
 }
 
-let joint_vels = [[degToRad(10)], [degToRad(-30)], [degToRad(30)]];
-const dt = 1 / breathe_params["cr"];
+function linear_interpolation(data, index)
+{
+    if (index > data.length - 1) return null;
+    let int_part = Math.floor(index);
+    let result = data[int_part] * (1 - (index - int_part)) + data[int_part+1] * (index - int_part);
+    return result;
+}
 
-let jacobian = jacobian_kinematics_head(robot_joint_state);
+function base_vel_at_t(loop_index)
+{
+    if (breathing_data == null) return -1;
+    let index = breathing_data.length * loop_index * breathe_params["bps"] / breathe_params["cr"];
+    return linear_interpolation(breathing_data, index);
+}
 
+function transpose(matrix)
+{
+    if (!Array.isArray(matrix)) {
+        throw new Error("Input must be an array");
+      }
+      
+      // Check if matrix is 1D or 2D
+      if (!Array.isArray(matrix[0])) {
+        // Handle 1D array by converting it to a single-column 2D array
+        return matrix.map(element => [element]);
+      } else {
+        // Handle 2D array by transposing it
+        return matrix[0].map((_, colIndex) => matrix.map(row => row[colIndex]));
+      }
+}
+
+function compute_next_joint_state(loop_index)
+{
+    let vel_profile_interpolated = breathe_params["velocity_profile"](loop_index);
+    
+    let modulated_vel = breathe_params["bps"] * breathe_params["amp"] * vel_profile_interpolated;
+    let vel_task_space = breathe_params["direction"].map(num => num * modulated_vel);
+
+    let jacobian = jacobian_kinematics_head(robot_joint_state);
+    let inv_jacobian = inv(jacobian);
+
+    let breathing_vels = matmul(inv_jacobian, transpose(vel_task_space));
+    const dt = 1 / breathe_params["cr"];
+    
+    let gazing_vels = [0, 0, 0];
+    let joint_vels = transpose(breathing_vels).flat().concat(gazing_vels)
+    
+    robot_joint_state = robot_joint_state.map((q, ind) => q + joint_vels[ind] * dt);
+    // robot_joint_state = robot_joint_state.map(q => q + 0.01 * dt);
+    set_joint_state(robot_joint_state);
+}
 
 // Animation loop
 function animate() {
@@ -328,10 +395,11 @@ function animate() {
         requestAnimationFrame( animate );
 
     }, 1000 / breathe_params["cr"]);
-    
+
     // breatheSin(breathe_counter);
     breathe_counter += 1;
     breathe_counter = breathe_counter % (breathe_params["cr"] / breathe_params["bps"]);
+    compute_next_joint_state(breathe_counter);
 
     // required if controls.enableDamping or controls.autoRotate are set to true
     controls.update();
