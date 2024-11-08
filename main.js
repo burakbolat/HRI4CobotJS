@@ -29,7 +29,8 @@ scene.add(backdrop);
 
 // Load the UR5e
 let shoulder, upperarm, forearm, wrist1, wrist2, wrist3;
-let robot_joint_state = [0, 30, 105, -130, 90, 0].map(angle => degToRad(angle));
+// let robot_joint_state = [0, 30, 105, -130, 90, 0].map(angle => degToRad(angle));
+let robot_joint_state = [0, 0, 0, 0, 0, 0].map(angle => degToRad(angle));
 
 const loader = new GLTFLoader();
 loader.load('public/ur5_e/ur5_e_v1.glb', function (gltf) {
@@ -140,7 +141,7 @@ function breatheSin(i) {
     forearm.rotateZ(-angle/20);
 }
 
-function jacobian_kinematics_head(joint_angles){
+function jacobian_body(joint_angles){
     let q0 = joint_angles[0];
     let q1 = joint_angles[1];
     let q2 = joint_angles[2];
@@ -191,7 +192,7 @@ function jacobian_kinematics_head(joint_angles){
     return jacobian;
 }
 
-function forward_kinematics_head(joint_angles){
+function forward_kinematics_body(joint_angles){
     let q0 = joint_angles[0];
     let q1 = joint_angles[1];
     let q2 = joint_angles[2];
@@ -227,8 +228,7 @@ function forward_kinematics_head(joint_angles){
             -sq0 * cq1 * cq2 + sq0 * sq1 * sq2,
             sq0 * sq1 * sq2 + sq0 * sq1 * cq2,
             cq0,
-            425 * sq0 * sq1 - 109.15 * cq0,
-            0
+            425 * sq0 * sq1 - 109.15 * cq0
         ],
         [ // Fourth row
             0,
@@ -239,14 +239,18 @@ function forward_kinematics_head(joint_angles){
     ];
 
     // end of last link wrt joint affecting it in the joint's frame
-    let head_forearm =[[0], [392.2], [109.15], [1]];
+    // let head_forearm =[[0], [392.2], [109.15], [1]];
+    let head_forearm = [[1, 0, 0, 0],
+                        [0, 1, 0, 392.2],
+                        [0, 0, 1, 109.15],
+                        [0, 0, 0, 1]];
     let head_base = matmul(T_2_b, head_forearm);
     
-    const geometry = new THREE.SphereGeometry(0.05, 32, 32);
-    const material = new THREE.MeshBasicMaterial({ color: 0x0077ff, wireframe: false });
-    let sphere = new THREE.Mesh(geometry, material);
-    sphere.position.set(head_base[0][0]/1000, head_base[1][0]/1000, head_base[2][0]/1000);
-    scene.add(sphere);
+    // const geometry = new THREE.SphereGeometry(0.05, 32, 32);
+    // const material = new THREE.MeshBasicMaterial({ color: 0x0077ff, wireframe: false });
+    // let sphere = new THREE.Mesh(geometry, material);
+    // sphere.position.set(head_base[0][3]/1000, head_base[1][3]/1000, head_base[2][3]/1000);
+    // scene.add(sphere);
 
     return head_base;
 }
@@ -374,7 +378,7 @@ function compute_next_joint_state(loop_index)
     let modulated_vel = breathe_params["bps"] * breathe_params["amp"] * vel_profile_interpolated;
     let vel_task_space = breathe_params["direction"].map(num => num * modulated_vel);
 
-    let jacobian = jacobian_kinematics_head(robot_joint_state);
+    let jacobian = jacobian_head(robot_joint_state);
     let inv_jacobian = inv(jacobian);
 
     let breathing_vels = matmul(inv_jacobian, transpose(vel_task_space));
@@ -388,6 +392,53 @@ function compute_next_joint_state(loop_index)
     set_joint_state(robot_joint_state);
 }
 
+function get_forward_kinematics_head(robot_joint_state)
+{
+    robot_joint_state[3] += 0.4;
+    robot_joint_state[4] += Math.PI;
+    robot_joint_state[5] += 0.1;
+
+    let q4 = robot_joint_state[3];
+    let q5 = robot_joint_state[4];
+    let q6 = robot_joint_state[5];
+
+    let cq4 = Math.cos(q4);
+    let cq5 = Math.cos(q5);
+    let cq6 = Math.cos(q6);
+
+    let sq4 = Math.sin(q4);
+    let sq5 = Math.sin(q5);
+    let sq6 = Math.sin(q6);
+
+
+    let T_w0_w1 = [[cq4, -sq4, 0, 0],
+                [sq4, cq4, 0, 0],
+                [0, 0, 1, -113],  // Decreased 20 mm
+                [0, 0, 0, 1]];
+
+    let T_w1_w2 = [[cq5, 0, sq5, 0],
+                [0, 1, 0, 87.7], // original is 99.7 mm but current mesh does not fit
+                [-sq5, 0, cq5, 0],
+                [0, 0, 0, 1]];
+
+    let T_w2_w3 = [[cq6, -sq6, 0, 0],
+                [sq6, cq6, 0, 0],
+                [0, 0, 1, -133],
+                [0, 0, 0, 1]];
+    
+    let T_b_w0 = forward_kinematics_body(robot_joint_state);
+    
+    let T_b_w1 = matmul(T_b_w0, T_w0_w1);    
+    let T_b_w2 = matmul(T_b_w1, T_w1_w2);
+    let T_b_w3 = matmul(T_b_w2, T_w2_w3);
+
+    return [T_b_w1, T_b_w2, T_b_w3];
+}
+
+let fws = get_forward_kinematics_head(robot_joint_state);
+let g = [fws[2][0][3] - fws[1][0][3], fws[2][1][3] - fws[1][1][3], fws[2][2][3] - fws[1][2][3], 1];
+console.log(g);
+
 // Animation loop
 function animate() {
     setTimeout( function() {
@@ -399,7 +450,7 @@ function animate() {
     // breatheSin(breathe_counter);
     breathe_counter += 1;
     breathe_counter = breathe_counter % (breathe_params["cr"] / breathe_params["bps"]);
-    compute_next_joint_state(breathe_counter);
+    // compute_next_joint_state(breathe_counter);
 
     // required if controls.enableDamping or controls.autoRotate are set to true
     controls.update();
