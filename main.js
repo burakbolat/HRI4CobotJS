@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { degToRad } from 'three/src/math/MathUtils.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
 // SCENE RELATED CODES
 // TODO : Change the scene setup with babylon.js sandbox page
@@ -11,6 +12,41 @@ const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerH
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
+
+const breathe_params = {
+    cr: 60,  // control rate in real robot
+    amp: 500, // amplitude
+    bps: 0.25, // breathe per second
+    velocity_profile: base_vel_at_t, // velocity profile
+    direction: [1, 1, 0]
+}
+
+// Initialize the GUI
+const gui = new dat.GUI();
+
+// Add GUI controls for each parameter
+
+// Control Rate (cr)
+gui.add(breathe_params, "cr", 10, 120).step(1).name("Control Rate");
+
+// Amplitude (amp)
+gui.add(breathe_params, "amp", 0, 1000).step(10).name("Amplitude");
+
+// Breathe Per Second (bps)
+gui.add(breathe_params, "bps", 0.1, 1.0).step(0.01).name("Breaths per Second");
+
+// Velocity Profile (dropdown or text display)
+gui.add(breathe_params, "velocity_profile").name("Velocity Profile");
+
+// Direction (use separate controls for each axis)
+const directionFolder = gui.addFolder("Direction");
+directionFolder.add(breathe_params.direction, 0, -1, 1).step(0.1).name("X Axis");
+directionFolder.add(breathe_params.direction, 1, -1, 1).step(0.1).name("Y Axis");
+directionFolder.add(breathe_params.direction, 2, -1, 1).step(0.1).name("Z Axis");
+
+// Optional: Open the direction folder by default
+directionFolder.open();
+
 
 // Create a simple plane for the floor
 const floorGeometry = new THREE.PlaneGeometry(10, 10);
@@ -29,8 +65,8 @@ scene.add(backdrop);
 
 // Load the UR5e
 let shoulder, upperarm, forearm, wrist1, wrist2, wrist3;
-// let robot_joint_state = [0, 30, 105, -130, 90, 0].map(angle => degToRad(angle));
-let robot_joint_state = [0, 0, 0, 0, 0, 0].map(angle => degToRad(angle));
+let robot_joint_state = [0, 30, 105, -130, 90, 0].map(angle => degToRad(angle));
+// let robot_joint_state = [0, 0, 0, 0, 0, 0].map(angle => degToRad(angle));
 
 const loader = new GLTFLoader();
 loader.load('public/ur5_e/ur5_e_v1.glb', function (gltf) {
@@ -65,12 +101,12 @@ loader.load('public/ur5_e/ur5_e_v1.glb', function (gltf) {
 
 function set_joint_state(joint_state)
 {
-    shoulder.rotation.y = robot_joint_state[0];
-    upperarm.rotation.z = robot_joint_state[1];
-    forearm.rotation.z = robot_joint_state[2];
-    wrist1.rotation.z = robot_joint_state[3];
-    wrist2.rotation.y = robot_joint_state[4];
-    wrist3.rotation.z = robot_joint_state[5];
+    shoulder.rotation.y = joint_state[0];
+    upperarm.rotation.z = joint_state[1];
+    forearm.rotation.z = joint_state[2];
+    wrist1.rotation.z = joint_state[3];
+    wrist2.rotation.y = joint_state[4];
+    wrist3.rotation.z = joint_state[5];
 }
 
 // Add lighting
@@ -113,20 +149,12 @@ fetch('breathing_data.json')
         console.error('There was a problem with the fetch operation:', error);
     });
 
-const breathe_params = {
-    cr: 60,  // control rate in real robot
-    amp: 500, // amplitude
-    bps: 0.25, // breathe per second
-    velocity_profile: base_vel_at_t, // velocity profile
-    direction: [1, 1, 0]
-}
-
 function normalize(vector)
 {
-    let magnitude = vetor.reduce((accumulator, currentValue) => accumulator + currentValue * currentValue, 0);
+    let magnitude = vector.reduce((accumulator, currentValue) => accumulator + currentValue * currentValue, 0);
     magnitude = Math.sqrt(magnitude);
     if (magnitude == 0) return;
-    vector = vector.map(elem => elem / magnitude);
+    return vector.map(elem => elem / magnitude);
 }
 
 breathe_params["direction"] = breathe_params["direction"]
@@ -378,7 +406,7 @@ function compute_next_joint_state(loop_index)
     let modulated_vel = breathe_params["bps"] * breathe_params["amp"] * vel_profile_interpolated;
     let vel_task_space = breathe_params["direction"].map(num => num * modulated_vel);
 
-    let jacobian = jacobian_head(robot_joint_state);
+    let jacobian = jacobian_body(robot_joint_state);
     let inv_jacobian = inv(jacobian);
 
     let breathing_vels = matmul(inv_jacobian, transpose(vel_task_space));
@@ -394,10 +422,6 @@ function compute_next_joint_state(loop_index)
 
 function get_forward_kinematics_head(robot_joint_state)
 {
-    robot_joint_state[3] += 0.4;
-    robot_joint_state[4] += Math.PI;
-    robot_joint_state[5] += 0.1;
-
     let q4 = robot_joint_state[3];
     let q5 = robot_joint_state[4];
     let q6 = robot_joint_state[5];
@@ -431,26 +455,103 @@ function get_forward_kinematics_head(robot_joint_state)
     let T_b_w1 = matmul(T_b_w0, T_w0_w1);    
     let T_b_w2 = matmul(T_b_w1, T_w1_w2);
     let T_b_w3 = matmul(T_b_w2, T_w2_w3);
-
+    
     return [T_b_w1, T_b_w2, T_b_w3];
 }
 
-let fws = get_forward_kinematics_head(robot_joint_state);
-let g = [fws[2][0][3] - fws[1][0][3], fws[2][1][3] - fws[1][1][3], fws[2][2][3] - fws[1][2][3], 1];
-console.log(g);
+let gazing_target = [-1, 0.5, 0];
+const geometry = new THREE.SphereGeometry(0.05, 32, 32);
+const material = new THREE.MeshBasicMaterial({ color: 0x0077ff, wireframe: false });
+let sphere = new THREE.Mesh(geometry, material);
+sphere.position.set(gazing_target[0], gazing_target[1], gazing_target[2]);
+scene.add(sphere);
+
+let first_time = true;
+function draw_line(dir, orig) {
+    if (!first_time) return;
+    if (first_time){
+        first_time = false;
+    }
+    const dir_tjs = new THREE.Vector3(dir[0], dir[1], dir[2]);
+    const orig_tjs = new THREE.Vector3(orig[0], orig[1], orig[2]);
+
+    const length = 1;
+    const color = 0xff0000;
+    const arrowHelper = new THREE.ArrowHelper(dir_tjs, orig_tjs, length, color);
+    scene.add(arrowHelper);  
+}
+
+function gaze_distance(x){
+    let current_js = structuredClone(robot_joint_state);
+    current_js[3] = x[0];
+    current_js[4] = x[1];
+    let fws = get_forward_kinematics_head(current_js);
+    let g = [fws[2][0][3] - fws[1][0][3], fws[2][1][3] - fws[1][1][3], fws[2][2][3] - fws[1][2][3], 1];
+    let g_des = [gazing_target[0] - fws[1][0][3]/1000, gazing_target[1] - fws[1][1][3]/1000, gazing_target[2] - fws[1][2][3]/1000, 1/1000];
+
+    g = normalize(g);
+    g_des = normalize(g_des);
+    
+    const origin = [fws[1][0][3]/1000, fws[1][1][3]/1000, fws[1][2][3]/1000]; 
+    // draw_line(g, origin);
+    // draw_line(g_des, origin);
+    
+
+    let cos_theta = g.reduce((sum, ai, i) => sum + ai * g_des[i], 0);
+
+    return Math.acos(cos_theta);
+}
+
+function animate_gazing() {
+    const initial_guess =[robot_joint_state[3], robot_joint_state[4]];
+
+    const result = fmin.nelderMead(gaze_distance, initial_guess);
+    robot_joint_state[3] = result.x[0];
+    robot_joint_state[4] = result.x[1];
+    set_joint_state(robot_joint_state);
+
+}
+
+// Function to handle keypresses
+const moveSpeed = 0.1;
+function moveSphere(event) {
+  switch (event.key) {
+    case "ArrowUp":
+      sphere.position.y += moveSpeed;
+      break;
+    case "ArrowDown":
+      sphere.position.y -= moveSpeed;
+      break;
+    case "ArrowLeft":
+      sphere.position.z -= moveSpeed;
+      break;
+    case "ArrowRight":
+      sphere.position.z += moveSpeed;
+      break;
+  }
+  gazing_target[0] = sphere.position.x;
+  gazing_target[1] = sphere.position.y;
+  gazing_target[2] = sphere.position.z;
+
+}
+
+// Listen for keydown events
+window.addEventListener("keydown", moveSphere);
+
 
 // Animation loop
 function animate() {
     setTimeout( function() {
 
         requestAnimationFrame( animate );
-
     }, 1000 / breathe_params["cr"]);
+    
+    animate_gazing();
 
     // breatheSin(breathe_counter);
     breathe_counter += 1;
     breathe_counter = breathe_counter % (breathe_params["cr"] / breathe_params["bps"]);
-    // compute_next_joint_state(breathe_counter);
+    compute_next_joint_state(breathe_counter);
 
     // required if controls.enableDamping or controls.autoRotate are set to true
     controls.update();
