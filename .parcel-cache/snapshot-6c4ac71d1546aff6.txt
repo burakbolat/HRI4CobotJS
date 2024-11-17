@@ -1,10 +1,12 @@
-43
+40
 42/home/burak/BreathingGazingJS/public/ur5_e1730016403561528000 1
 36/home/burak/BreathingGazingJS/public1731872037985701201 1
-56/home/burak/BreathingGazingJS/dist/index.56d97391.js.map1731872167440503898 0
-34/home/burak/BreathingGazingJS/dist1731872167441503928 1
+56/home/burak/BreathingGazingJS/dist/index.56d97391.js.map1731872903590738176 0
+34/home/burak/BreathingGazingJS/dist1731872903590738176 1
 76/home/burak/BreathingGazingJS/src/.vite/deps/three_src_math_MathUtils__js.js1731869309020080047 0
 59/home/burak/BreathingGazingJS/src/.vite/deps/lil-gui.js.map1731869309020080047 0
+59/home/burak/BreathingGazingJS/src/public/ur5_e/ur5_e_v2.glb1731866599628292455 0
+82/home/burak/BreathingGazingJS/src/.vite/deps/three_addons_loaders_EXRLoader__js.js1731869309019080024 0
 59/home/burak/BreathingGazingJS/src/public/ur5_e/ur5_e_v1.glb1730016403561528609 0
 59/home/burak/BreathingGazingJS/public/studio_small_02_4k.exr1731872037992701408 0
 44/home/burak/BreathingGazingJS/src/.vite/deps1731869309023080119 1
@@ -15,18 +17,13 @@
 39/home/burak/BreathingGazingJS/README.md1731235615330247181 0
 97/home/burak/BreathingGazingJS/src/.vite/deps/three_examples_jsm_controls_OrbitControls__js.js.map1731869309020080047 0
 53/home/burak/BreathingGazingJS/src/breathing_data.json1730628753705271402 0
-45/home/burak/BreathingGazingJS/dist/index.html1731872167423503401 0
+45/home/burak/BreathingGazingJS/dist/index.html1731872903574737719 0
 44/home/burak/BreathingGazingJS/src/index.html1731869177422026386 0
 63/home/burak/BreathingGazingJS/src/public/studio_small_02_4k.exr1731866312363222982 0
 93/home/burak/BreathingGazingJS/src/.vite/deps/three_examples_jsm_loaders_GLTFLoader__js.js.map1731869309020080047 0
 33/home/burak/BreathingGazingJS/src1731866089081943033 1
-40/home/burak/BreathingGazingJS/index.html1731235465056863000 0
-29/home/burak/BreathingGazingJS1731872167415503167 1
-51/home/burak/BreathingGazingJS/index.b24aef74.js.map1731235423715655000 0
-59/home/burak/BreathingGazingJS/src/public/ur5_e/ur5_e_v2.glb1731866599628292455 0
-82/home/burak/BreathingGazingJS/src/.vite/deps/three_addons_loaders_EXRLoader__js.js1731869309019080024 0
+29/home/burak/BreathingGazingJS1731872903568737547 1
 59/home/burak/BreathingGazingJS/src/public/ur5_e/ur5_e_v3.glb1731867155666068051 0
-47/home/burak/BreathingGazingJS/index.b24aef74.js1731235423702654000 0
 57/home/burak/BreathingGazingJS/src/.vite/deps/three.js.map1731869309020080047 0
 80/home/burak/BreathingGazingJS/src/.vite/deps/three_src_math_MathUtils__js.js.map1731869309019080024 0
 55/home/burak/BreathingGazingJS/src/.vite/deps/lil-gui.js1731869309019080024 0
@@ -35,7 +32,7 @@
 46/home/burak/BreathingGazingJS/src/public/ur5_e1731868261616274235 1
 49/home/burak/BreathingGazingJS/breathing_data.json1731235541056081000 0
 66/home/burak/BreathingGazingJS/src/.vite/deps/chunk-M6PXLJ4O.js.map1731869309020080047 0
-52/home/burak/BreathingGazingJS/dist/index.56d97391.js1731872167427503518 0
+52/home/burak/BreathingGazingJS/dist/index.56d97391.js1731872903577737804 0
 40/home/burak/BreathingGazingJS/src/public1731869734286709809 1
 59/home/burak/BreathingGazingJS/src/.vite/deps/_metadata.json1731869309023080119 0
 93/home/burak/BreathingGazingJS/src/.vite/deps/three_examples_jsm_controls_OrbitControls__js.js1731869309020080047 0
