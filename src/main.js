@@ -1,19 +1,39 @@
-import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { degToRad } from 'three/src/math/MathUtils.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { GUI } from 'lil-gui';
 
 // SCENE RELATED CODES
 // TODO : Change the scene setup with babylon.js sandbox page
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: false });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-const breathe_params = {
+let exrCubeRenderTarget
+
+THREE.DefaultLoadingManager.onLoad = function ( ) {
+
+    pmremGenerator.dispose();
+
+};
+
+// Load EXR file as background
+const loaderEXR = new THREE.EXRLoader().load( 'public/studio_small_02_4k.exr', function ( texture ) {
+
+    texture.mapping = THREE.EquirectangularReflectionMapping;
+    exrCubeRenderTarget = pmremGenerator.fromEquirectangular( texture );
+    floorMaterial.envMap = exrCubeRenderTarget.texture;
+    floorMaterial.needsUpdate = true;
+    scene.background = texture;
+} );
+
+const pmremGenerator = new THREE.PMREMGenerator( renderer );
+pmremGenerator.compileEquirectangularShader();
+
+
+let breathe_params = {
     cr: 60,  // control rate in real robot
     amp: 500, // amplitude
     bps: 0.25, // breathe per second
@@ -25,43 +45,62 @@ const breathe_params = {
 const gui = new dat.GUI();
 
 // Add GUI controls for each parameter
-
-// Control Rate (cr)
-gui.add(breathe_params, "cr", 10, 120).step(1).name("Control Rate");
+let breathe_params_gui = {
+    cr: 60,  // control rate in real robot
+    amp: 500, // amplitude
+    bps: 0.25, // breathe per second
+    velocity_profile: base_vel_at_t, // velocity profile
+    direction: [1, 1, 0]
+}
 
 // Amplitude (amp)
-gui.add(breathe_params, "amp", 0, 1000).step(10).name("Amplitude");
+gui.add(breathe_params_gui, "amp", 0, 1000).step(10).name("Amplitude");
 
 // Breathe Per Second (bps)
-gui.add(breathe_params, "bps", 0.1, 1.0).step(0.01).name("Breaths per Second");
+gui.add(breathe_params_gui, "bps", 0.1, 1.0).step(0.01).name("Breaths per Second");
 
 // Velocity Profile (dropdown or text display)
-gui.add(breathe_params, "velocity_profile").name("Velocity Profile");
+gui.add(breathe_params_gui, "velocity_profile").name("Velocity Profile");
 
 // Direction (use separate controls for each axis)
 const directionFolder = gui.addFolder("Direction");
-directionFolder.add(breathe_params.direction, 0, -1, 1).step(0.1).name("X Axis");
-directionFolder.add(breathe_params.direction, 1, -1, 1).step(0.1).name("Y Axis");
-directionFolder.add(breathe_params.direction, 2, -1, 1).step(0.1).name("Z Axis");
+directionFolder.add(breathe_params_gui.direction, 0, -1, 1).step(0.1).name("X Axis");
+directionFolder.add(breathe_params_gui.direction, 1, -1, 1).step(0.1).name("Y Axis");
+directionFolder.add(breathe_params_gui.direction, 2, -1, 1).step(0.1).name("Z Axis");
 
 // Optional: Open the direction folder by default
 directionFolder.open();
 
+const actions = {
+    set_new_params : set_new_params_funct
+};
+
+function set_new_params_funct()
+{
+    breathe_params["amp"] = breathe_params_gui["amp"];
+    breathe_params["bps"] = breathe_params_gui["bps"];
+    breathe_params["direction"][0] = breathe_params_gui["direction"][0];
+    breathe_params["direction"][1] = breathe_params_gui["direction"][1];
+    breathe_params["direction"][2] = breathe_params_gui["direction"][2];
+    
+    robot_joint_state = [0, 30, 105, -130, 90, 0].map(angle => degToRad(angle));
+    set_joint_state(robot_joint_state);
+    breathe_counter = 0;
+}
+
+gui.add(actions, 'set_new_params').name("RESET");
 
 // Create a simple plane for the floor
-const floorGeometry = new THREE.PlaneGeometry(10, 10);
-const floorMaterial = new THREE.MeshStandardMaterial({ color: 0xeeeeee });
+let floorGeometry = new THREE.PlaneGeometry(10, 10);
+let floorMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0xaaaaaa, 
+    roughness: 0.0,
+    metalness: 1.0,
+    envMapIntensity: 1.0,
+ });
 const floor = new THREE.Mesh(floorGeometry, floorMaterial);
 floor.rotation.x = -Math.PI / 2; // Rotate to lay flat
 scene.add(floor);
-
-// Add a backdrop (optional)
-const backdropGeometry = new THREE.PlaneGeometry(10, 5);
-const backdropMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide });
-const backdrop = new THREE.Mesh(backdropGeometry, backdropMaterial);
-backdrop.position.set(0, 2.5, -5);
-backdrop.rotation.x = -Math.PI / 4; // Tilt the backdrop
-scene.add(backdrop);
 
 // Load the UR5e
 let shoulder, upperarm, forearm, wrist1, wrist2, wrist3;
@@ -69,7 +108,7 @@ let robot_joint_state = [0, 30, 105, -130, 90, 0].map(angle => degToRad(angle));
 // let robot_joint_state = [0, 0, 0, 0, 0, 0].map(angle => degToRad(angle));
 
 const loader = new GLTFLoader();
-loader.load('public/ur5_e/ur5_e_v1.glb', function (gltf) {
+loader.load('public/ur5_e/ur5_e_v4.glb', function (gltf) {
     gltf.scene.scale.set(1, 1, 1); // Adjust scale as needed
     gltf.scene.position.set(0, 0, 0); // Center the model
     scene.add(gltf.scene);
@@ -83,10 +122,27 @@ loader.load('public/ur5_e/ur5_e_v1.glb', function (gltf) {
         else if (child.name.includes("wrist1")) wrist1 = child;
         else if (child.name.includes("wrist2")) wrist2 = child;
         else if (child.name.includes("wrist3")) wrist3 = child;
+        
 
-        if (child.isMesh){
-            child.material.metalness = 0.5;
-            child.material.roughness = 0.5;
+        if (child.isMesh) console.log(child.name);
+        if(child.isMesh && child.name.includes("Actor"))
+        {
+            child.material.envMapIntensity = 1.0;
+            child.material.color.set(0xdddddd);
+            child.material.metalness = 1;
+            child.material.roughness = 0.2;
+            child.material.envMap = exrCubeRenderTarget.texture;
+            child.material.needsUpdate = true;
+        }
+
+        if (child.isMesh && 
+            (child.name.includes("4001") 
+            || child.name.includes("1008"))
+        ){
+            child.material.metalness = 0.0;
+            child.material.roughness = 0.2;
+            child.material.color.set(0x00c5ff);
+            // console.log(child.material.blendColor);
         }
     })
 
@@ -110,6 +166,7 @@ function set_joint_state(joint_state)
 }
 
 // Add lighting
+// SET TO HDRI
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Soft light
 scene.add(ambientLight);
 
